@@ -666,10 +666,6 @@ body {
     font-size: 1.55rem;
   }
 
-  #map {
-    height: 400px !important;
-  }
-
   .preview-container {
     max-height: 320px;
   }

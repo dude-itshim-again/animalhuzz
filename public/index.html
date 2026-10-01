@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AnimalHuzz • Campus Wildlife Tracker</title>
   <meta name="description" content="Track, photograph, and map campus wildlife sightings in real-time.">
   
@@ -11,11 +11,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <!-- Leaflet CSS & JS via CDN -->
+  <!-- Leaflet CSS and JS via CDN -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-  <!-- Application Stylesheet -->
+  <!-- Link style.css -->
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -41,7 +41,7 @@
       <section class="card upload-card">
         <div class="card-header">
           <h2>Report a Sighting</h2>
-          <span class="hint">Take a photo with your phone camera or choose an image</span>
+          <span class="hint">Take a photo with your camera or select an image</span>
         </div>
 
         <div class="upload-zone" id="uploadZone">
@@ -62,16 +62,13 @@
           </div>
         </div>
 
-        <!-- Coordinates Status / Manual fallback if geolocation is unavailable -->
         <div class="geo-status-bar" id="geoStatusBar">
           <span class="geo-icon">📍</span>
           <span class="geo-text" id="geoStatusText">GPS coordinates will be captured automatically</span>
         </div>
 
-        <button type="button" id="uploadBtn" class="primary-btn">
-          <span class="btn-spinner" id="btnSpinner" style="display: none;"></span>
-          <span class="btn-text" id="btnText">Upload Sighting</span>
-        </button>
+        <!-- Upload Sighting Button -->
+        <button type="button" id="uploadBtn" class="primary-btn">Upload Sighting</button>
 
         <div id="statusMessage" class="status-toast" style="display: none;"></div>
       </section>
@@ -106,13 +103,8 @@
           </button>
         </div>
 
-        <!-- Chronological Photo Feed -->
-        <div id="feed">
-          <div class="feed-loading">
-            <div class="spinner"></div>
-            <p>Loading recent sightings...</p>
-          </div>
-        </div>
+        <!-- Chronological Photo Feed Container -->
+        <div id="feed"></div>
       </section>
     </main>
 
@@ -121,7 +113,7 @@
     </footer>
   </div>
 
-  <!-- Application Script -->
+  <!-- Link script.js -->
   <script src="script.js"></script>
 </body>
 </html>

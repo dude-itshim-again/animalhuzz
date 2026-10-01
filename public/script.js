@@ -2,198 +2,118 @@
 // AnimalHuzz - Campus Wildlife Tracker Client Script
 // =========================================================
 
-document.addEventListener('DOMContentLoaded', () => {
-  // DOM Elements
-  const photoInput = document.getElementById('photoInput');
-  const uploadBtn = document.getElementById('uploadBtn');
-  const btnSpinner = document.getElementById('btnSpinner');
-  const btnText = document.getElementById('btnText');
-  const statusMessage = document.getElementById('statusMessage');
-  const uploadPrompt = document.getElementById('uploadPrompt');
-  const previewContainer = document.getElementById('previewContainer');
-  const imagePreview = document.getElementById('imagePreview');
-  const removePhotoBtn = document.getElementById('removePhotoBtn');
-  const geoStatusBar = document.getElementById('geoStatusBar');
-  const geoStatusText = document.getElementById('geoStatusText');
-  const sightingCount = document.getElementById('sightingCount');
-  const recenterBtn = document.getElementById('recenterBtn');
-  const refreshFeedBtn = document.getElementById('refreshFeedBtn');
-  const feedContainer = document.getElementById('feed');
+// Global Map and Marker references
+let map = null;
+let markers = [];
+const markersMap = new Map();
 
-  // Initialize Leaflet Map
-  // Default coordinates fallback (campus center or global default)
+// Initialize Leaflet Map
+function initMap() {
+  const mapElement = document.getElementById('map');
+  if (!mapElement) return null;
+
+  // Default coordinates (campus center)
   const defaultCoords = [12.9716, 77.5946];
-  const map = L.map('map', {
+  
+  map = L.map('map', {
     zoomControl: true,
-    scrollWheelZoom: false // Better touch/scroll behavior on mobile
+    scrollWheelZoom: false
   }).setView(defaultCoords, 14);
 
-  // Enable scroll zoom on click/tap
+  // Enable scroll zoom when map receives focus
   map.on('focus', () => map.scrollWheelZoom.enable());
 
-  // Add OpenStreetMap Tile Layer
+  // Add OpenStreetMap tile layer
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
   }).addTo(map);
 
-  // Layer group for all sighting markers
-  const markersLayer = L.featureGroup().addTo(map);
-  const markersMap = new Map();
+  window.map = map;
+  return map;
+}
 
-  // Custom Wildlife Marker Pin Icon
-  const wildlifeIcon = L.divIcon({
-    className: 'custom-wildlife-pin',
-    html: `
-      <div style="
-        background: #10b981;
-        width: 32px;
-        height: 32px;
-        border-radius: 50% 50% 50% 0;
-        transform: rotate(-45deg);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: 2px solid #ffffff;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.4);
-      ">
-        <span style="transform: rotate(45deg); font-size: 15px;">🐾</span>
-      </div>
-    `,
-    iconSize: [32, 32],
-    iconAnchor: [16, 32],
-    popupAnchor: [0, -30]
-  });
+// Format timestamp helper
+function formatDate(isoString) {
+  if (!isoString) return 'Just now';
+  try {
+    const date = new Date(isoString);
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return isoString;
+  }
+}
 
-  // Helper: Format Date
-  function formatDate(isoString) {
-    if (!isoString) return 'Just now';
-    try {
-      const date = new Date(isoString);
-      return date.toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch {
-      return isoString;
+// Display toast message helper
+let statusTimeout = null;
+function showStatus(text, type = 'info') {
+  const statusMessage = document.getElementById('statusMessage');
+  if (!statusMessage) return;
+
+  if (statusTimeout) clearTimeout(statusTimeout);
+  statusMessage.textContent = text;
+  statusMessage.className = `status-toast ${type}`;
+  statusMessage.style.display = 'block';
+
+  statusTimeout = setTimeout(() => {
+    statusMessage.style.display = 'none';
+  }, 6000);
+}
+
+// Reset upload form
+function resetUploadForm() {
+  const photoInput = document.getElementById('photoInput');
+  const imagePreview = document.getElementById('imagePreview');
+  const previewContainer = document.getElementById('previewContainer');
+  const uploadPrompt = document.getElementById('uploadPrompt');
+  const geoStatusBar = document.getElementById('geoStatusBar');
+  const geoStatusText = document.getElementById('geoStatusText');
+
+  if (photoInput) photoInput.value = '';
+  if (imagePreview) imagePreview.src = '';
+  if (previewContainer) previewContainer.style.display = 'none';
+  if (uploadPrompt) uploadPrompt.style.display = 'flex';
+  if (geoStatusBar) geoStatusBar.className = 'geo-status-bar';
+  if (geoStatusText) geoStatusText.textContent = 'GPS coordinates will be captured automatically';
+}
+
+// =========================================================
+// Function: Fetch Sightings on Page Load and After Upload
+// Loops through data, drops Leaflet markers, and renders image tags in #feed
+// =========================================================
+async function fetchSightings() {
+  const feedContainer = document.getElementById('feed');
+  const sightingCount = document.getElementById('sightingCount');
+
+  try {
+    const response = await fetch('/api/sightings');
+    if (!response.ok) {
+      throw new Error(`Failed to load sightings (status: ${response.status})`);
     }
-  }
 
-  // Helper: Display Status Toast Message
-  let statusTimeout = null;
-  function showStatus(text, type = 'info') {
-    if (statusTimeout) clearTimeout(statusTimeout);
-    statusMessage.textContent = text;
-    statusMessage.className = `status-toast ${type}`;
-    statusMessage.style.display = 'block';
+    const sightings = await response.json();
 
-    statusTimeout = setTimeout(() => {
-      statusMessage.style.display = 'none';
-    }, 6000);
-  }
-
-  // Helper: Set Button Loading State
-  function setLoading(isLoading, text = 'Upload Sighting') {
-    if (isLoading) {
-      uploadBtn.disabled = true;
-      btnSpinner.style.display = 'inline-block';
-      btnText.textContent = text;
-    } else {
-      uploadBtn.disabled = false;
-      btnSpinner.style.display = 'none';
-      btnText.textContent = 'Upload Sighting';
-    }
-  }
-
-  // Helper: Reset Upload Form
-  function resetUploadForm() {
-    photoInput.value = '';
-    imagePreview.src = '';
-    previewContainer.style.display = 'none';
-    uploadPrompt.style.display = 'flex';
-    geoStatusBar.className = 'geo-status-bar';
-    geoStatusText.textContent = 'GPS coordinates will be captured automatically';
-  }
-
-  // Handle Photo Selection & Preview
-  photoInput.addEventListener('change', () => {
-    const file = photoInput.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        imagePreview.src = e.target.result;
-        uploadPrompt.style.display = 'none';
-        previewContainer.style.display = 'flex';
-      };
-      reader.readAsDataURL(file);
-
-      // Check GPS availability immediately to give quick user feedback
-      if ('geolocation' in navigator) {
-        geoStatusBar.className = 'geo-status-bar active';
-        geoStatusText.textContent = '📍 Photo selected • Ready to capture GPS';
-      }
-    } else {
-      resetUploadForm();
-    }
-  });
-
-  // Handle Remove Photo Button
-  removePhotoBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    resetUploadForm();
-  });
-
-  // Drag and Drop Effects on Upload Zone
-  const uploadZone = document.getElementById('uploadZone');
-  ['dragenter', 'dragover'].forEach(eventName => {
-    uploadZone.addEventListener(eventName, (e) => {
-      e.preventDefault();
-      uploadZone.classList.add('dragover');
-    }, false);
-  });
-  ['dragleave', 'drop'].forEach(eventName => {
-    uploadZone.addEventListener(eventName, (e) => {
-      e.preventDefault();
-      uploadZone.classList.remove('dragover');
-    }, false);
-  });
-
-  // =========================================================
-  // Fetch Sightings Function
-  // Fetches GET /api/sightings, renders Leaflet markers, and builds photo feed
-  // =========================================================
-  async function fetchSightings() {
-    try {
-      const response = await fetch('/api/sightings');
-      if (!response.ok) {
-        throw new Error(`Failed to load sightings (status ${response.status})`);
-      }
-
-      const sightings = await response.json();
-      renderSightings(sightings);
-    } catch (err) {
-      console.error('Error fetching sightings:', err);
-      feedContainer.innerHTML = `
-        <div class="feed-empty">
-          <div class="feed-empty-icon">⚠️</div>
-          <div class="feed-empty-title">Could not load sightings</div>
-          <p class="feed-empty-text">${err.message || 'Please verify the backend connection and try again.'}</p>
-        </div>
-      `;
-    }
-  }
-
-  // Render Sightings onto Map and Feed
-  function renderSightings(sightings) {
-    // Clear existing markers and map references
-    markersLayer.clearLayers();
+    // Clear existing markers from map
+    markers.forEach(m => {
+      if (map) map.removeLayer(m);
+    });
+    markers = [];
     markersMap.clear();
 
-    // Update count badge
-    const count = sightings ? sightings.length : 0;
-    sightingCount.textContent = `${count} sighting${count === 1 ? '' : 's'}`;
+    // Update count badge if present
+    if (sightingCount) {
+      const count = sightings ? sightings.length : 0;
+      sightingCount.textContent = `${count} sighting${count === 1 ? '' : 's'}`;
+    }
+
+    // Render in #feed
+    if (!feedContainer) return;
+    feedContainer.innerHTML = '';
 
     if (!sightings || sightings.length === 0) {
       feedContainer.innerHTML = `
@@ -206,194 +126,328 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Clear feed container
-    feedContainer.innerHTML = '';
-
+    // Loop through sightings data
     sightings.forEach((sighting) => {
+      const imageUrl = sighting.image_url || sighting.image;
       const lat = parseFloat(sighting.latitude);
       const lon = parseFloat(sighting.longitude);
       const hasCoords = !isNaN(lat) && !isNaN(lon);
 
-      // 1. Add Leaflet Marker
-      if (hasCoords) {
-        const marker = L.marker([lat, lon], { icon: wildlifeIcon });
+      // 1. Drop Leaflet marker for each coordinate
+      if (map && hasCoords) {
+        const marker = L.marker([lat, lon]).addTo(map);
 
         const popupContent = `
           <div class="popup-card">
             <div class="popup-img-wrapper">
-              <img src="${sighting.image_url}" alt="Campus Sighting #${sighting.id}" loading="lazy" />
+              <img src="${imageUrl}" alt="Sighting #${sighting.id}" loading="lazy" />
             </div>
             <div class="popup-info">
-              <div class="popup-title">🐾 Sighting #${sighting.id}</div>
+              <div class="popup-title">🐾 Wildlife Sighting #${sighting.id}</div>
               <div class="popup-time">${formatDate(sighting.created_at)}</div>
-              <div class="popup-coords">${lat.toFixed(5)}, ${lon.toFixed(5)}</div>
+              <div class="popup-coords">📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}</div>
             </div>
           </div>
         `;
         marker.bindPopup(popupContent);
-        markersLayer.addLayer(marker);
+        markers.push(marker);
         markersMap.set(sighting.id, { marker, lat, lon });
       }
 
-      // 2. Render Chronological Photo Feed Item
+      // 2. Render image tags and sighting details in #feed div
       const card = document.createElement('div');
       card.className = 'sighting-card';
       card.id = `sighting-${sighting.id}`;
 
-      card.innerHTML = `
-        <div class="sighting-image-container">
-          <img src="${sighting.image_url}" alt="Campus wildlife sighting #${sighting.id}" loading="lazy">
-          <span class="sighting-badge">#${sighting.id}</span>
-        </div>
-        <div class="sighting-meta">
-          <div class="meta-header">
-            <span class="sighting-timestamp">${formatDate(sighting.created_at)}</span>
-            ${hasCoords ? `
-              <button type="button" class="view-map-link" data-id="${sighting.id}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                  <circle cx="12" cy="10" r="3"></circle>
-                </svg>
-                View on Map
-              </button>
-            ` : ''}
-          </div>
-          ${hasCoords ? `
-            <div class="sighting-coords">
-              📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}
-            </div>
-          ` : ''}
-        </div>
-      `;
+      // Image container with <img> tag
+      const imgContainer = document.createElement('div');
+      imgContainer.className = 'sighting-image-container';
+
+      const img = document.createElement('img');
+      img.src = imageUrl;
+      img.alt = `Campus wildlife sighting #${sighting.id}`;
+      img.loading = 'lazy';
+
+      const badge = document.createElement('span');
+      badge.className = 'sighting-badge';
+      badge.textContent = `#${sighting.id}`;
+
+      imgContainer.appendChild(img);
+      imgContainer.appendChild(badge);
+
+      // Metadata section
+      const meta = document.createElement('div');
+      meta.className = 'sighting-meta';
+
+      const metaHeader = document.createElement('div');
+      metaHeader.className = 'meta-header';
+
+      const timestamp = document.createElement('span');
+      timestamp.className = 'sighting-timestamp';
+      timestamp.textContent = formatDate(sighting.created_at);
+
+      metaHeader.appendChild(timestamp);
+
+      if (hasCoords) {
+        const viewBtn = document.createElement('button');
+        viewBtn.type = 'button';
+        viewBtn.className = 'view-map-link';
+        viewBtn.setAttribute('data-id', sighting.id);
+        viewBtn.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+            <circle cx="12" cy="10" r="3"></circle>
+          </svg>
+          View on Map
+        `;
+        metaHeader.appendChild(viewBtn);
+      }
+
+      meta.appendChild(metaHeader);
+
+      if (hasCoords) {
+        const coords = document.createElement('div');
+        coords.className = 'sighting-coords';
+        coords.textContent = `📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+        meta.appendChild(coords);
+      }
+
+      card.appendChild(imgContainer);
+      card.appendChild(meta);
 
       feedContainer.appendChild(card);
     });
 
-    // Fit map bounds to markers if any exist
-    if (markersLayer.getLayers().length > 0) {
-      map.fitBounds(markersLayer.getBounds().pad(0.12));
+    // Auto-fit map to markers if markers exist
+    if (map && markers.length > 0) {
+      const group = L.featureGroup(markers);
+      map.fitBounds(group.getBounds().pad(0.12));
+    }
+  } catch (err) {
+    console.error('Error fetching sightings:', err);
+    if (feedContainer) {
+      feedContainer.innerHTML = `
+        <div class="feed-empty">
+          <div class="feed-empty-icon">⚠️</div>
+          <div class="feed-empty-title">Could not load sightings</div>
+          <p class="feed-empty-text">${err.message || 'Please check backend connection.'}</p>
+        </div>
+      `;
     }
   }
+}
 
-  // Handle "View on Map" Clicks from the Feed
-  feedContainer.addEventListener('click', (e) => {
-    const btn = e.target.closest('.view-map-link');
-    if (btn) {
-      const id = parseInt(btn.getAttribute('data-id'), 10);
-      const record = markersMap.get(id);
-      if (record) {
-        // Scroll to map smoothly
-        document.getElementById('map').scrollIntoView({ behavior: 'smooth', block: 'center' });
-        // Pan and open popup
-        map.flyTo([record.lat, record.lon], 17, { duration: 1.0 });
-        setTimeout(() => {
-          record.marker.openPopup();
-        }, 1000);
+// Expose fetchSightings globally
+window.fetchSightings = fetchSightings;
+
+// =========================================================
+// Initialization & Event Listeners
+// =========================================================
+function setupApp() {
+  // Initialize map
+  initMap();
+
+  const photoInput = document.getElementById('photoInput');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const uploadPrompt = document.getElementById('uploadPrompt');
+  const previewContainer = document.getElementById('previewContainer');
+  const imagePreview = document.getElementById('imagePreview');
+  const removePhotoBtn = document.getElementById('removePhotoBtn');
+  const geoStatusBar = document.getElementById('geoStatusBar');
+  const geoStatusText = document.getElementById('geoStatusText');
+  const recenterBtn = document.getElementById('recenterBtn');
+  const refreshFeedBtn = document.getElementById('refreshFeedBtn');
+  const feedContainer = document.getElementById('feed');
+
+  // Photo Selection & Preview Handling
+  if (photoInput) {
+    photoInput.addEventListener('change', () => {
+      const file = photoInput.files && photoInput.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          if (imagePreview) imagePreview.src = e.target.result;
+          if (uploadPrompt) uploadPrompt.style.display = 'none';
+          if (previewContainer) previewContainer.style.display = 'flex';
+        };
+        reader.readAsDataURL(file);
+
+        if (geoStatusBar && geoStatusText) {
+          geoStatusBar.className = 'geo-status-bar active';
+          geoStatusText.textContent = '📍 Photo selected • Ready to capture GPS';
+        }
+      } else {
+        resetUploadForm();
       }
-    }
-  });
+    });
+  }
 
-  // Recenter Map Button
-  recenterBtn.addEventListener('click', () => {
-    if (markersLayer.getLayers().length > 0) {
-      map.fitBounds(markersLayer.getBounds().pad(0.12));
-    } else {
-      map.setView(defaultCoords, 14);
-    }
-  });
-
-  // Refresh Feed Button
-  refreshFeedBtn.addEventListener('click', () => {
-    fetchSightings();
-  });
+  // Remove Photo Button
+  if (removePhotoBtn) {
+    removePhotoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      resetUploadForm();
+    });
+  }
 
   // =========================================================
-  // Upload Sighting Event Listener
+  // Event Listener: "Upload Sighting" Button
   // =========================================================
-  uploadBtn.addEventListener('click', () => {
-    // a) Check if a file is selected
-    const file = photoInput.files[0];
-    if (!file) {
-      showStatus('Please select or capture a photo first.', 'error');
-      return;
-    }
+  if (uploadBtn) {
+    uploadBtn.addEventListener('click', () => {
+      // a) Checks if a file is selected
+      const file = photoInput && photoInput.files && photoInput.files[0];
+      if (!file) {
+        if (typeof alert === 'function') {
+          try { alert('Please select a photo first.'); } catch (e) {}
+        }
+        showStatus('Please select or capture a photo first.', 'error');
+        return;
+      }
 
-    // b) Call navigator.geolocation.getCurrentPosition()
-    if (!('geolocation' in navigator)) {
-      showStatus('Geolocation is not supported by your browser.', 'error');
-      return;
-    }
+      // b) Calls navigator.geolocation.getCurrentPosition()
+      if (!('geolocation' in navigator)) {
+        const err = 'Geolocation is not supported by your browser.';
+        if (typeof alert === 'function') {
+          try { alert(err); } catch (e) {}
+        }
+        showStatus(err, 'error');
+        return;
+      }
 
-    setLoading(true, 'Acquiring GPS location...');
-    geoStatusBar.className = 'geo-status-bar active';
-    geoStatusText.textContent = 'Acquiring high accuracy GPS coordinates...';
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = 'Capturing GPS & Uploading...';
+      if (geoStatusBar && geoStatusText) {
+        geoStatusBar.className = 'geo-status-bar active';
+        geoStatusText.textContent = 'Acquiring high accuracy GPS coordinates...';
+      }
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const latitude = position.coords.latitude;
-        const longitude = position.coords.longitude;
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const latitude = position.coords.latitude;
+          const longitude = position.coords.longitude;
 
-        geoStatusText.textContent = `📍 Location locked: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-        setLoading(true, 'Uploading sighting...');
-
-        // c) Append the file, latitude, and longitude to a FormData object
-        const formData = new FormData();
-        formData.append('image', file);
-        formData.append('latitude', latitude);
-        formData.append('longitude', longitude);
-
-        // d) Send a POST request using fetch() to /api/upload
-        try {
-          const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData
-          });
-
-          if (!response.ok) {
-            const errorJson = await response.json().catch(() => ({}));
-            throw new Error(errorJson.error || errorJson.details || `Upload failed (Status ${response.status})`);
+          if (geoStatusText) {
+            geoStatusText.textContent = `📍 GPS Locked: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
           }
 
-          const savedData = await response.json();
+          // c) Appends the file, latitude, and longitude to a FormData object
+          const formData = new FormData();
+          formData.append('image', file);
+          formData.append('latitude', latitude);
+          formData.append('longitude', longitude);
 
-          // e) Refresh the map and feed upon a successful response
-          showStatus('Wildlife sighting uploaded successfully!', 'success');
-          resetUploadForm();
-          await fetchSightings();
+          // d) Sends a POST request using fetch() to /api/upload
+          try {
+            const response = await fetch('/api/upload', {
+              method: 'POST',
+              body: formData
+            });
 
-          // Pan to newly added sighting
-          map.flyTo([latitude, longitude], 16, { duration: 1.2 });
-        } catch (err) {
-          console.error('Upload request error:', err);
-          showStatus(err.message || 'Failed to upload sighting. Please try again.', 'error');
-        } finally {
-          setLoading(false);
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(errorData.error || errorData.details || `Upload failed (Status ${response.status})`);
+            }
+
+            const savedRecord = await response.json();
+
+            // e) Refreshes the map and feed upon a successful response
+            showStatus('Wildlife sighting uploaded successfully!', 'success');
+            resetUploadForm();
+            await fetchSightings();
+
+            // Smooth pan to newly uploaded sighting
+            if (map) {
+              map.flyTo([latitude, longitude], 16, { duration: 1.2 });
+            }
+          } catch (uploadError) {
+            console.error('Upload failed:', uploadError);
+            if (typeof alert === 'function') {
+              try { alert(uploadError.message || 'Upload failed'); } catch (e) {}
+            }
+            showStatus(uploadError.message || 'Failed to upload sighting', 'error');
+          } finally {
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Upload Sighting';
+          }
+        },
+        (geoError) => {
+          console.error('Geolocation error:', geoError);
+          let errorMsg = 'Failed to retrieve location.';
+          if (geoError.code === geoError.PERMISSION_DENIED) {
+            errorMsg = 'Location permission denied. Please enable GPS permissions.';
+          } else if (geoError.code === geoError.POSITION_UNAVAILABLE) {
+            errorMsg = 'GPS signal unavailable. Please ensure location services are enabled.';
+          } else if (geoError.code === geoError.TIMEOUT) {
+            errorMsg = 'GPS request timed out. Please try again.';
+          }
+
+          if (geoStatusBar && geoStatusText) {
+            geoStatusBar.className = 'geo-status-bar error';
+            geoStatusText.textContent = errorMsg;
+          }
+          if (typeof alert === 'function') {
+            try { alert(errorMsg); } catch (e) {}
+          }
+          showStatus(errorMsg, 'error');
+
+          uploadBtn.disabled = false;
+          uploadBtn.textContent = 'Upload Sighting';
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0
         }
-      },
-      (geoError) => {
-        console.error('Geolocation error:', geoError);
-        let errorMsg = 'Failed to retrieve location.';
-        if (geoError.code === geoError.PERMISSION_DENIED) {
-          errorMsg = 'Location permission denied. Please enable GPS permissions in your browser.';
-        } else if (geoError.code === geoError.POSITION_UNAVAILABLE) {
-          errorMsg = 'GPS position unavailable. Please check your network/location settings.';
-        } else if (geoError.code === geoError.TIMEOUT) {
-          errorMsg = 'GPS request timed out. Please try again.';
-        }
+      );
+    });
+  }
 
-        geoStatusBar.className = 'geo-status-bar error';
-        geoStatusText.textContent = errorMsg;
-        showStatus(errorMsg, 'error');
-        setLoading(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0
+  // Feed "View on Map" Link Delegate
+  if (feedContainer) {
+    feedContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.view-map-link');
+      if (btn && map) {
+        const id = parseInt(btn.getAttribute('data-id'), 10);
+        const record = markersMap.get(id);
+        if (record) {
+          const mapEl = document.getElementById('map');
+          if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          map.flyTo([record.lat, record.lon], 17, { duration: 1.0 });
+          setTimeout(() => {
+            record.marker.openPopup();
+          }, 1000);
+        }
       }
-    );
-  });
+    });
+  }
 
-  // Initial Fetch on Page Load
+  // Recenter button
+  if (recenterBtn) {
+    recenterBtn.addEventListener('click', () => {
+      if (map && markers.length > 0) {
+        const group = L.featureGroup(markers);
+        map.fitBounds(group.getBounds().pad(0.12));
+      } else if (map) {
+        map.setView([12.9716, 77.5946], 14);
+      }
+    });
+  }
+
+  // Refresh feed button
+  if (refreshFeedBtn) {
+    refreshFeedBtn.addEventListener('click', () => {
+      fetchSightings();
+    });
+  }
+
+  // Initial fetch of sightings on page load
   fetchSightings();
-});
+}
+
+// Run setup when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', setupApp);
+} else {
+  setupApp();
+}
