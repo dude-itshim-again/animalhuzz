@@ -55,6 +55,49 @@ app.get('/health', (req, res) => {
   });
 });
 
+// GET /api/sightings - Fetch all sightings ordered by created_at descending
+app.get('/api/sightings', async (req, res) => {
+  try {
+    let result;
+    try {
+      result = await pool.query(`
+        SELECT 
+          id, 
+          image_url, 
+          ST_X(location::geometry) AS longitude, 
+          ST_Y(location::geometry) AS latitude, 
+          created_at
+        FROM sightings
+        ORDER BY created_at DESC
+      `);
+    } catch (colErr) {
+      // Fallback in case column in table is named 'image' instead of 'image_url'
+      if (colErr.code === '42703' && colErr.message.includes('image_url')) {
+        result = await pool.query(`
+          SELECT 
+            id, 
+            image AS image_url, 
+            ST_X(location::geometry) AS longitude, 
+            ST_Y(location::geometry) AS latitude, 
+            created_at
+          FROM sightings
+          ORDER BY created_at DESC
+        `);
+      } else {
+        throw colErr;
+      }
+    }
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching sightings:', error);
+    res.status(500).json({
+      error: 'Failed to retrieve sightings',
+      details: error.message
+    });
+  }
+});
+
 // POST /api/upload endpoint for sighting photo and GPS coordinates
 app.post('/api/upload', (req, res, next) => {
   upload.single('image')(req, res, (err) => {
