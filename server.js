@@ -189,7 +189,19 @@ app.post('/api/upload', (req, res, next) => {
         }
       };
 
-      const result = await model.generateContent([prompt, imagePart]);
+      let result;
+      try {
+        result = await model.generateContent([prompt, imagePart]);
+      } catch (genErr) {
+        if (genErr.message && (genErr.message.includes('404') || genErr.message.includes('not found') || genErr.message.includes('no longer available'))) {
+          console.warn('gemini-1.5-flash is deprecated/retired, falling back to gemini-3.8-flash...');
+          const activeModel = genAI.getGenerativeModel({ model: 'gemini-3.8-flash' });
+          result = await activeModel.generateContent([prompt, imagePart]);
+        } else {
+          throw genErr;
+        }
+      }
+
       const response = await result.response;
       const aiText = response.text() ? response.text().trim() : '';
 
