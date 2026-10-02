@@ -2,7 +2,6 @@
 // AnimalHuzz - Campus Wildlife Tracker Client Script
 // =========================================================
 
-// Global Map and Marker references
 let map = null;
 let markers = [];
 const markersMap = new Map();
@@ -10,20 +9,17 @@ const markersMap = new Map();
 // Initialize Leaflet Map
 function initMap() {
   const mapElement = document.getElementById('map');
-  if (!mapElement) return null;
+  if (!mapElement || map) return map;
 
-  // Default coordinates (campus center)
   const defaultCoords = [12.9716, 77.5946];
-  
+
   map = L.map('map', {
     zoomControl: true,
     scrollWheelZoom: false
   }).setView(defaultCoords, 14);
 
-  // Enable scroll zoom when map receives focus
   map.on('focus', () => map.scrollWheelZoom.enable());
 
-  // Add OpenStreetMap tile layer
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -33,7 +29,7 @@ function initMap() {
   return map;
 }
 
-// Format timestamp helper
+// Format date helper
 function formatDate(isoString) {
   if (!isoString) return 'Just now';
   try {
@@ -49,43 +45,7 @@ function formatDate(isoString) {
   }
 }
 
-// Display toast message helper
-let statusTimeout = null;
-function showStatus(text, type = 'info') {
-  const statusMessage = document.getElementById('statusMessage');
-  if (!statusMessage) return;
-
-  if (statusTimeout) clearTimeout(statusTimeout);
-  statusMessage.textContent = text;
-  statusMessage.className = `status-toast ${type}`;
-  statusMessage.style.display = 'block';
-
-  statusTimeout = setTimeout(() => {
-    statusMessage.style.display = 'none';
-  }, 6000);
-}
-
-// Reset upload form
-function resetUploadForm() {
-  const photoInput = document.getElementById('photoInput');
-  const imagePreview = document.getElementById('imagePreview');
-  const previewContainer = document.getElementById('previewContainer');
-  const uploadPrompt = document.getElementById('uploadPrompt');
-  const geoStatusBar = document.getElementById('geoStatusBar');
-  const geoStatusText = document.getElementById('geoStatusText');
-
-  if (photoInput) photoInput.value = '';
-  if (imagePreview) imagePreview.src = '';
-  if (previewContainer) previewContainer.style.display = 'none';
-  if (uploadPrompt) uploadPrompt.style.display = 'flex';
-  if (geoStatusBar) geoStatusBar.className = 'geo-status-bar';
-  if (geoStatusText) geoStatusText.textContent = 'GPS coordinates will be captured automatically';
-}
-
-// =========================================================
-// Function: Fetch Sightings on Page Load and After Upload
-// Loops through data, drops Leaflet markers, and renders image tags in #feed
-// =========================================================
+// Fetch all sightings and render on map & feed
 async function fetchSightings() {
   const feedContainer = document.getElementById('feed');
   const sightingCount = document.getElementById('sightingCount');
@@ -98,20 +58,18 @@ async function fetchSightings() {
 
     const sightings = await response.json();
 
-    // Clear existing markers from map
+    // Clear existing markers
     markers.forEach(m => {
       if (map) map.removeLayer(m);
     });
     markers = [];
     markersMap.clear();
 
-    // Update count badge if present
     if (sightingCount) {
       const count = sightings ? sightings.length : 0;
       sightingCount.textContent = `${count} sighting${count === 1 ? '' : 's'}`;
     }
 
-    // Render in #feed
     if (!feedContainer) return;
     feedContainer.innerHTML = '';
 
@@ -126,24 +84,22 @@ async function fetchSightings() {
       return;
     }
 
-    // Loop through sightings data
     sightings.forEach((sighting) => {
       const imageUrl = sighting.image_url || sighting.image;
       const lat = parseFloat(sighting.latitude);
       const lon = parseFloat(sighting.longitude);
       const hasCoords = !isNaN(lat) && !isNaN(lon);
 
-      // 1. Drop Leaflet marker for each coordinate
+      // Drop Leaflet marker for coordinate
       if (map && hasCoords) {
         const marker = L.marker([lat, lon]).addTo(map);
-
         const popupContent = `
           <div class="popup-card">
             <div class="popup-img-wrapper">
               <img src="${imageUrl}" alt="Sighting #${sighting.id}" loading="lazy" />
             </div>
             <div class="popup-info">
-              <div class="popup-title">🐾 Wildlife Sighting #${sighting.id}</div>
+              <div class="popup-title">🐾 Sighting #${sighting.id}</div>
               <div class="popup-time">${formatDate(sighting.created_at)}</div>
               <div class="popup-coords">📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}</div>
             </div>
@@ -154,71 +110,38 @@ async function fetchSightings() {
         markersMap.set(sighting.id, { marker, lat, lon });
       }
 
-      // 2. Render image tags and sighting details in #feed div
+      // Render image tag and details in #feed
       const card = document.createElement('div');
       card.className = 'sighting-card';
       card.id = `sighting-${sighting.id}`;
 
-      // Image container with <img> tag
-      const imgContainer = document.createElement('div');
-      imgContainer.className = 'sighting-image-container';
-
-      const img = document.createElement('img');
-      img.src = imageUrl;
-      img.alt = `Campus wildlife sighting #${sighting.id}`;
-      img.loading = 'lazy';
-
-      const badge = document.createElement('span');
-      badge.className = 'sighting-badge';
-      badge.textContent = `#${sighting.id}`;
-
-      imgContainer.appendChild(img);
-      imgContainer.appendChild(badge);
-
-      // Metadata section
-      const meta = document.createElement('div');
-      meta.className = 'sighting-meta';
-
-      const metaHeader = document.createElement('div');
-      metaHeader.className = 'meta-header';
-
-      const timestamp = document.createElement('span');
-      timestamp.className = 'sighting-timestamp';
-      timestamp.textContent = formatDate(sighting.created_at);
-
-      metaHeader.appendChild(timestamp);
-
-      if (hasCoords) {
-        const viewBtn = document.createElement('button');
-        viewBtn.type = 'button';
-        viewBtn.className = 'view-map-link';
-        viewBtn.setAttribute('data-id', sighting.id);
-        viewBtn.innerHTML = `
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-            <circle cx="12" cy="10" r="3"></circle>
-          </svg>
-          View on Map
-        `;
-        metaHeader.appendChild(viewBtn);
-      }
-
-      meta.appendChild(metaHeader);
-
-      if (hasCoords) {
-        const coords = document.createElement('div');
-        coords.className = 'sighting-coords';
-        coords.textContent = `📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-        meta.appendChild(coords);
-      }
-
-      card.appendChild(imgContainer);
-      card.appendChild(meta);
+      card.innerHTML = `
+        <div class="sighting-image-container">
+          <img src="${imageUrl}" alt="Campus wildlife sighting #${sighting.id}" loading="lazy">
+          <span class="sighting-badge">#${sighting.id}</span>
+        </div>
+        <div class="sighting-meta">
+          <div class="meta-header">
+            <span class="sighting-timestamp">${formatDate(sighting.created_at)}</span>
+            ${hasCoords ? `
+              <button type="button" class="view-map-link" data-id="${sighting.id}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                  <circle cx="12" cy="10" r="3"></circle>
+                </svg>
+                View on Map
+              </button>
+            ` : ''}
+          </div>
+          ${hasCoords ? `
+            <div class="sighting-coords">📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}</div>
+          ` : ''}
+        </div>
+      `;
 
       feedContainer.appendChild(card);
     });
 
-    // Auto-fit map to markers if markers exist
     if (map && markers.length > 0) {
       const group = L.featureGroup(markers);
       map.fitBounds(group.getBounds().pad(0.12));
@@ -237,14 +160,10 @@ async function fetchSightings() {
   }
 }
 
-// Expose fetchSightings globally
 window.fetchSightings = fetchSightings;
 
-// =========================================================
-// Initialization & Event Listeners
-// =========================================================
+// Setup Application & Event Listeners
 function setupApp() {
-  // Initialize map
   initMap();
 
   const photoInput = document.getElementById('photoInput');
@@ -255,9 +174,9 @@ function setupApp() {
   const removePhotoBtn = document.getElementById('removePhotoBtn');
   const geoStatusBar = document.getElementById('geoStatusBar');
   const geoStatusText = document.getElementById('geoStatusText');
+  const feedContainer = document.getElementById('feed');
   const recenterBtn = document.getElementById('recenterBtn');
   const refreshFeedBtn = document.getElementById('refreshFeedBtn');
-  const feedContainer = document.getElementById('feed');
 
   // Photo Selection & Preview Handling
   if (photoInput) {
@@ -274,10 +193,8 @@ function setupApp() {
 
         if (geoStatusBar && geoStatusText) {
           geoStatusBar.className = 'geo-status-bar active';
-          geoStatusText.textContent = '📍 Photo selected • Ready to capture GPS';
+          geoStatusText.textContent = '📍 Photo selected • Click Upload Sighting to capture GPS';
         }
-      } else {
-        resetUploadForm();
       }
     });
   }
@@ -286,42 +203,36 @@ function setupApp() {
   if (removePhotoBtn) {
     removePhotoBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      resetUploadForm();
+      if (photoInput) photoInput.value = '';
+      if (imagePreview) imagePreview.src = '';
+      if (previewContainer) previewContainer.style.display = 'none';
+      if (uploadPrompt) uploadPrompt.style.display = 'flex';
+      if (geoStatusBar) geoStatusBar.className = 'geo-status-bar';
+      if (geoStatusText) geoStatusText.textContent = 'GPS coordinates will be captured automatically';
     });
   }
 
-  // =========================================================
-  // Event Listener: "Upload Sighting" Button
-  // =========================================================
+  // =========================================================================
+  // 1. Ensure the "Upload Sighting" button has a click event listener attached to the correct HTML ID
+  // =========================================================================
   if (uploadBtn) {
     uploadBtn.addEventListener('click', () => {
-      // a) Checks if a file is selected
-      const file = photoInput && photoInput.files && photoInput.files[0];
-      if (!file) {
-        if (typeof alert === 'function') {
-          try { alert('Please select a photo first.'); } catch (e) {}
-        }
-        showStatus('Please select or capture a photo first.', 'error');
+      // 2. Check if navigator.geolocation exists. If not, alert the user that their browser doesn't support geolocation.
+      if (!navigator.geolocation) {
+        alert("Geolocation is not supported by your browser.");
         return;
       }
 
-      // b) Calls navigator.geolocation.getCurrentPosition()
-      if (!('geolocation' in navigator)) {
-        const err = 'Geolocation is not supported by your browser.';
-        if (typeof alert === 'function') {
-          try { alert(err); } catch (e) {}
-        }
-        showStatus(err, 'error');
-        return;
-      }
-
+      // 5. Provide visual feedback during the upload process (changing button text to 'Uploading...')
+      uploadBtn.textContent = 'Uploading...';
       uploadBtn.disabled = true;
-      uploadBtn.textContent = 'Capturing GPS & Uploading...';
+
       if (geoStatusBar && geoStatusText) {
         geoStatusBar.className = 'geo-status-bar active';
-        geoStatusText.textContent = 'Acquiring high accuracy GPS coordinates...';
+        geoStatusText.textContent = 'Acquiring GPS location...';
       }
 
+      // 3. Call navigator.geolocation.getCurrentPosition() with an explicit error callback function
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const latitude = position.coords.latitude;
@@ -331,13 +242,23 @@ function setupApp() {
             geoStatusText.textContent = `📍 GPS Locked: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
           }
 
-          // c) Appends the file, latitude, and longitude to a FormData object
+          // Check if file is selected
+          const file = photoInput && photoInput.files && photoInput.files[0];
+          if (!file) {
+            alert("Please select or capture a photo first.");
+            // 5. Reset button text if validation fails
+            uploadBtn.textContent = 'Upload Sighting';
+            uploadBtn.disabled = false;
+            return;
+          }
+
+          // Build form data
           const formData = new FormData();
           formData.append('image', file);
           formData.append('latitude', latitude);
           formData.append('longitude', longitude);
 
-          // d) Sends a POST request using fetch() to /api/upload
+          // 4. Use a try...catch block around the fetch() call to catch network errors and log them
           try {
             const response = await fetch('/api/upload', {
               method: 'POST',
@@ -346,58 +267,64 @@ function setupApp() {
 
             if (!response.ok) {
               const errorData = await response.json().catch(() => ({}));
-              throw new Error(errorData.error || errorData.details || `Upload failed (Status ${response.status})`);
+              throw new Error(errorData.error || errorData.details || `Upload failed with status ${response.status}`);
             }
 
             const savedRecord = await response.json();
 
-            // e) Refreshes the map and feed upon a successful response
-            showStatus('Wildlife sighting uploaded successfully!', 'success');
-            resetUploadForm();
+            // Clear upload form
+            if (photoInput) photoInput.value = '';
+            if (imagePreview) imagePreview.src = '';
+            if (previewContainer) previewContainer.style.display = 'none';
+            if (uploadPrompt) uploadPrompt.style.display = 'flex';
+            if (geoStatusBar) geoStatusBar.className = 'geo-status-bar';
+            if (geoStatusText) geoStatusText.textContent = 'GPS coordinates will be captured automatically';
+
+            alert('Sighting uploaded successfully!');
+
+            // Refresh map and feed
             await fetchSightings();
 
-            // Smooth pan to newly uploaded sighting
             if (map) {
               map.flyTo([latitude, longitude], 16, { duration: 1.2 });
             }
-          } catch (uploadError) {
-            console.error('Upload failed:', uploadError);
-            if (typeof alert === 'function') {
-              try { alert(uploadError.message || 'Upload failed'); } catch (e) {}
-            }
-            showStatus(uploadError.message || 'Failed to upload sighting', 'error');
+          } catch (networkError) {
+            console.error("Upload network error:", networkError);
+            alert("Upload failed: " + networkError.message);
           } finally {
-            uploadBtn.disabled = false;
+            // 5. Reset button text after upload completes or fails
             uploadBtn.textContent = 'Upload Sighting';
+            uploadBtn.disabled = false;
           }
         },
-        (geoError) => {
-          console.error('Geolocation error:', geoError);
-          let errorMsg = 'Failed to retrieve location.';
-          if (geoError.code === geoError.PERMISSION_DENIED) {
-            errorMsg = 'Location permission denied. Please enable GPS permissions.';
-          } else if (geoError.code === geoError.POSITION_UNAVAILABLE) {
-            errorMsg = 'GPS signal unavailable. Please ensure location services are enabled.';
-          } else if (geoError.code === geoError.TIMEOUT) {
-            errorMsg = 'GPS request timed out. Please try again.';
+        (err) => {
+          // 3. Explicit error callback function to log permission denials or timeouts
+          console.error("Location access error:", err);
+
+          let errorMsg = "Unable to retrieve location.";
+          if (err.code === err.PERMISSION_DENIED) {
+            errorMsg = "Location access was denied. Please allow location permissions in your browser.";
+          } else if (err.code === err.POSITION_UNAVAILABLE) {
+            errorMsg = "Location information is unavailable. Please check your GPS/network settings.";
+          } else if (err.code === err.TIMEOUT) {
+            errorMsg = "Location request timed out. Please try again.";
           }
 
           if (geoStatusBar && geoStatusText) {
             geoStatusBar.className = 'geo-status-bar error';
             geoStatusText.textContent = errorMsg;
           }
-          if (typeof alert === 'function') {
-            try { alert(errorMsg); } catch (e) {}
-          }
-          showStatus(errorMsg, 'error');
 
-          uploadBtn.disabled = false;
+          alert("Location access error: " + errorMsg);
+
+          // 5. Reset button text after failure
           uploadBtn.textContent = 'Upload Sighting';
+          uploadBtn.disabled = false;
         },
         {
           enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 0
+          timeout: 20000,
+          maximumAge: 60000
         }
       );
     });
@@ -441,11 +368,11 @@ function setupApp() {
     });
   }
 
-  // Initial fetch of sightings on page load
+  // Initial fetch on page load
   fetchSightings();
 }
 
-// Run setup when DOM is ready
+// Execute setupApp
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', setupApp);
 } else {
