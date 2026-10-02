@@ -3,12 +3,17 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
 
 const pool = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Initialize Google Generative AI SDK with gemini-1.5-flash
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
 // Ensure public/uploads directory exists
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
@@ -64,6 +69,7 @@ app.get('/api/sightings', async (req, res) => {
         SELECT 
           id, 
           image_url, 
+          COALESCE(species_tag, 'Unknown') AS species_tag,
           ST_X(location::geometry) AS longitude, 
           ST_Y(location::geometry) AS latitude, 
           created_at
@@ -71,12 +77,25 @@ app.get('/api/sightings', async (req, res) => {
         ORDER BY created_at DESC
       `);
     } catch (colErr) {
-      // Fallback in case column in table is named 'image' instead of 'image_url'
-      if (colErr.code === '42703' && colErr.message.includes('image_url')) {
+      // Fallback if species_tag or image_url column variations exist
+      if (colErr.code === '42703' && colErr.message.includes('species_tag')) {
+        result = await pool.query(`
+          SELECT 
+            id, 
+            image_url, 
+            'Unknown' AS species_tag,
+            ST_X(location::geometry) AS longitude, 
+            ST_Y(location::geometry) AS latitude, 
+            created_at
+          FROM sightings
+          ORDER BY created_at DESC
+        `);
+      } else if (colErr.code === '42703' && colErr.message.includes('image_url')) {
         result = await pool.query(`
           SELECT 
             id, 
             image AS image_url, 
+            'Unknown' AS species_tag,
             ST_X(location::geometry) AS longitude, 
             ST_Y(location::geometry) AS latitude, 
             created_at
@@ -98,7 +117,7 @@ app.get('/api/sightings', async (req, res) => {
   }
 });
 
-// POST /api/upload endpoint for sighting photo and GPS coordinates
+// POST /api/upload endpoint for sighting photo, GPS coordinates, and AI animal identification
 app.post('/api/upload', (req, res, next) => {
   upload.single('image')(req, res, (err) => {
     if (err instanceof multer.MulterError) {
@@ -126,7 +145,6 @@ app.post('/api/upload', (req, res, next) => {
     latitude === '' ||
     longitude === ''
   ) {
-    // Clean up uploaded file if validation fails
     if (file.path && fs.existsSync(file.path)) {
       fs.unlink(file.path, () => {});
     }
@@ -152,27 +170,84 @@ app.post('/api/upload', (req, res, next) => {
     });
   }
 
+  // 3. Intercept the uploaded file to identify the primary animal using Gemini Vision AI
+  let speciesTag = 'Unknown';
+
+  try {
+    if (process.env.GEMINI_API_KEY) {
+      // Read uploaded image file and convert to base64
+      const imageBuffer = fs.readFileSync(file.path);
+      const base64Image = imageBuffer.toString('base64');
+      const mimeType = file.mimetype || 'image/jpeg';
+
+      const prompt = "Identify the primary animal in this image in one or two words (e.g., 'Macaque', 'Stray Dog', 'Kingfisher'). If there is no animal, reply 'Unknown'. Output only the name.";
+
+      const imagePart = {
+        inlineData: {
+          data: base64Image,
+          mimeType: mimeType
+        }
+      };
+
+      const result = await model.generateContent([prompt, imagePart]);
+      const response = await result.response;
+      const aiText = response.text() ? response.text().trim() : '';
+
+      if (aiText) {
+        // Clean up any extra formatting or punctuation
+        speciesTag = aiText.replace(/[\r\n\*\"]/g, '').trim() || 'Unknown';
+      }
+      console.log(`Gemini Vision AI identified animal: "${speciesTag}"`);
+    } else {
+      console.warn('GEMINI_API_KEY is not set. Defaulting species_tag to "Unknown".');
+    }
+  } catch (aiError) {
+    // 7. If API fails or times out, default species_tag to 'Unknown' so upload still succeeds
+    console.error('Gemini Vision AI identification failed:', aiError.message);
+    speciesTag = 'Unknown';
+  }
+
   // File URL path accessible via static serving
   const imageUrl = `/uploads/${file.filename}`;
 
   try {
     let result;
     try {
-      // Save sighting with PostGIS point (longitude x, latitude y, SRID 4326)
+      // 6. Save sighting to PostgreSQL with PostGIS location and species_tag
       result = await pool.query(
-        `INSERT INTO sightings (image_url, location)
-         VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326))
+        `INSERT INTO sightings (image_url, location, species_tag)
+         VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4)
          RETURNING *`,
-        [imageUrl, lon, lat]
+        [imageUrl, lon, lat, speciesTag]
       );
     } catch (colErr) {
-      // Fallback in case column in table is named 'image' instead of 'image_url'
-      if (colErr.code === '42703' && colErr.message.includes('image_url')) {
+      // If species_tag column is missing, add it dynamically or fallback
+      if (colErr.code === '42703' && colErr.message.includes('species_tag')) {
+        try {
+          await pool.query(`ALTER TABLE sightings ADD COLUMN IF NOT EXISTS species_tag TEXT DEFAULT 'Unknown'`);
+          result = await pool.query(
+            `INSERT INTO sightings (image_url, location, species_tag)
+             VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4)
+             RETURNING *`,
+            [imageUrl, lon, lat, speciesTag]
+          );
+        } catch (alterErr) {
+          result = await pool.query(
+            `INSERT INTO sightings (image_url, location)
+             VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326))
+             RETURNING *`,
+            [imageUrl, lon, lat]
+          );
+          if (result.rows[0]) {
+            result.rows[0].species_tag = speciesTag;
+          }
+        }
+      } else if (colErr.code === '42703' && colErr.message.includes('image_url')) {
         result = await pool.query(
-          `INSERT INTO sightings (image, location)
-           VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326))
+          `INSERT INTO sightings (image, location, species_tag)
+           VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4)
            RETURNING *`,
-          [imageUrl, lon, lat]
+          [imageUrl, lon, lat, speciesTag]
         );
       } else {
         throw colErr;
@@ -190,9 +265,11 @@ app.post('/api/upload', (req, res, next) => {
   }
 });
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Campus Wildlife Tracking server running on http://localhost:${PORT}`);
-});
+// Start the server if executed directly
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Campus Wildlife Tracking server running on http://localhost:${PORT}`);
+  });
+}
 
-module.exports = { app, pool, upload };
+module.exports = { app, pool, upload, model };

@@ -89,6 +89,7 @@ async function fetchSightings() {
       const lat = parseFloat(sighting.latitude);
       const lon = parseFloat(sighting.longitude);
       const hasCoords = !isNaN(lat) && !isNaN(lon);
+      const species = sighting.species_tag && sighting.species_tag !== 'Unknown' ? sighting.species_tag : 'Sighting';
 
       // Drop Leaflet marker for coordinate
       if (map && hasCoords) {
@@ -96,10 +97,10 @@ async function fetchSightings() {
         const popupContent = `
           <div class="popup-card">
             <div class="popup-img-wrapper">
-              <img src="${imageUrl}" alt="Sighting #${sighting.id}" loading="lazy" />
+              <img src="${imageUrl}" alt="${species} #${sighting.id}" loading="lazy" />
             </div>
             <div class="popup-info">
-              <div class="popup-title">🐾 Sighting #${sighting.id}</div>
+              <div class="popup-title">🐾 ${species} #${sighting.id}</div>
               <div class="popup-time">${formatDate(sighting.created_at)}</div>
               <div class="popup-coords">📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}</div>
             </div>
@@ -117,8 +118,8 @@ async function fetchSightings() {
 
       card.innerHTML = `
         <div class="sighting-image-container">
-          <img src="${imageUrl}" alt="Campus wildlife sighting #${sighting.id}" loading="lazy">
-          <span class="sighting-badge">#${sighting.id}</span>
+          <img src="${imageUrl}" alt="Campus wildlife ${species} #${sighting.id}" loading="lazy">
+          <span class="sighting-badge">${species} #${sighting.id}</span>
         </div>
         <div class="sighting-meta">
           <div class="meta-header">
