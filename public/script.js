@@ -6,6 +6,29 @@ let map = null;
 let markers = [];
 const markersMap = new Map();
 
+// Helper: Get stored auth token
+function getAuthToken() {
+  return localStorage.getItem('token') || localStorage.getItem('animalhuzz_token');
+}
+
+// Helper: Set auth session
+function setAuthSession(token, email) {
+  if (token) {
+    localStorage.setItem('token', token);
+    localStorage.setItem('animalhuzz_token', token);
+  }
+  if (email) {
+    localStorage.setItem('user_email', email);
+  }
+}
+
+// Helper: Clear auth session
+function clearAuthSession() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('animalhuzz_token');
+  localStorage.removeItem('user_email');
+}
+
 // Initialize Leaflet Map
 function initMap() {
   const mapElement = document.getElementById('map');
@@ -43,6 +66,41 @@ function formatDate(isoString) {
   } catch {
     return isoString;
   }
+}
+
+// Display toast message helper
+let statusTimeout = null;
+function showStatus(text, type = 'info') {
+  const statusMessage = document.getElementById('statusMessage');
+  if (!statusMessage) return;
+
+  if (statusTimeout) clearTimeout(statusTimeout);
+  statusMessage.textContent = text;
+  statusMessage.className = `status-toast ${type}`;
+  statusMessage.style.display = 'block';
+
+  statusTimeout = setTimeout(() => {
+    statusMessage.style.display = 'none';
+  }, 6000);
+}
+
+// Reset upload form
+function resetUploadForm() {
+  const photoInput = document.getElementById('photoInput');
+  const imagePreview = document.getElementById('imagePreview');
+  const previewContainer = document.getElementById('previewContainer');
+  const uploadPrompt = document.getElementById('uploadPrompt');
+  const geoStatusBar = document.getElementById('geoStatusBar');
+  const geoStatusText = document.getElementById('geoStatusText');
+  const petSelect = document.getElementById('petSelect');
+
+  if (photoInput) photoInput.value = '';
+  if (imagePreview) imagePreview.src = '';
+  if (previewContainer) previewContainer.style.display = 'none';
+  if (uploadPrompt) uploadPrompt.style.display = 'flex';
+  if (geoStatusBar) geoStatusBar.className = 'geo-status-bar';
+  if (geoStatusText) geoStatusText.textContent = 'GPS coordinates will be captured automatically';
+  if (petSelect) petSelect.value = '';
 }
 
 // Fetch all sightings and render on map & feed
@@ -89,7 +147,9 @@ async function fetchSightings() {
       const lat = parseFloat(sighting.latitude);
       const lon = parseFloat(sighting.longitude);
       const hasCoords = !isNaN(lat) && !isNaN(lon);
+      const petName = sighting.pet_name ? `🐾 Pet: ${sighting.pet_name}` : null;
       const species = sighting.species_tag && sighting.species_tag !== 'Unknown' ? sighting.species_tag : 'Sighting';
+      const displayTitle = petName || species;
 
       // Drop Leaflet marker for coordinate
       if (map && hasCoords) {
@@ -97,10 +157,10 @@ async function fetchSightings() {
         const popupContent = `
           <div class="popup-card">
             <div class="popup-img-wrapper">
-              <img src="${imageUrl}" alt="${species} #${sighting.id}" loading="lazy" />
+              <img src="${imageUrl}" alt="${displayTitle} #${sighting.id}" loading="lazy" />
             </div>
             <div class="popup-info">
-              <div class="popup-title">🐾 ${species} #${sighting.id}</div>
+              <div class="popup-title">🐾 ${displayTitle} #${sighting.id}</div>
               <div class="popup-time">${formatDate(sighting.created_at)}</div>
               <div class="popup-coords">📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}</div>
             </div>
@@ -118,8 +178,8 @@ async function fetchSightings() {
 
       card.innerHTML = `
         <div class="sighting-image-container">
-          <img src="${imageUrl}" alt="Campus wildlife ${species} #${sighting.id}" loading="lazy">
-          <span class="sighting-badge">${species} #${sighting.id}</span>
+          <img src="${imageUrl}" alt="Campus wildlife ${displayTitle} #${sighting.id}" loading="lazy">
+          <span class="sighting-badge">${displayTitle} #${sighting.id}</span>
         </div>
         <div class="sighting-meta">
           <div class="meta-header">
@@ -163,6 +223,32 @@ async function fetchSightings() {
 
 window.fetchSightings = fetchSightings;
 
+// Fetch and populate campus pets dropdown
+async function fetchPets() {
+  const petSelectGroup = document.getElementById('petSelectGroup');
+  const petSelect = document.getElementById('petSelect');
+  if (!petSelect) return;
+
+  try {
+    const res = await fetch('/api/pets');
+    if (res.ok) {
+      const pets = await res.json();
+      if (pets && pets.length > 0) {
+        petSelect.innerHTML = '<option value="">None / Wild animal</option>';
+        pets.forEach(pet => {
+          const opt = document.createElement('option');
+          opt.value = pet.id;
+          opt.textContent = `${pet.name} (${pet.species})`;
+          petSelect.appendChild(opt);
+        });
+        if (petSelectGroup) petSelectGroup.style.display = 'flex';
+      }
+    }
+  } catch (e) {
+    console.warn('Could not load pets:', e);
+  }
+}
+
 // Setup Application & Event Listeners
 function setupApp() {
   initMap();
@@ -179,6 +265,159 @@ function setupApp() {
   const recenterBtn = document.getElementById('recenterBtn');
   const refreshFeedBtn = document.getElementById('refreshFeedBtn');
 
+  // Auth UI Elements
+  const authModal = document.getElementById('authModal');
+  const openAuthModalBtn = document.getElementById('openAuthModalBtn');
+  const closeModalBtn = document.getElementById('closeModalBtn');
+  const tabLogin = document.getElementById('tabLogin');
+  const tabSignup = document.getElementById('tabSignup');
+  const authForm = document.getElementById('authForm');
+  const authEmail = document.getElementById('authEmail');
+  const authPassword = document.getElementById('authPassword');
+  const authSubmitText = document.getElementById('authSubmitText');
+  const authError = document.getElementById('authError');
+  const authSuccess = document.getElementById('authSuccess');
+  const userProfile = document.getElementById('userProfile');
+  const userEmailDisplay = document.getElementById('userEmailDisplay');
+  const logoutBtn = document.getElementById('logoutBtn');
+
+  let authMode = 'login'; // 'login' or 'signup'
+
+  // Update Auth UI State
+  function updateAuthUI() {
+    const token = getAuthToken();
+    const email = localStorage.getItem('user_email');
+
+    if (token) {
+      if (openAuthModalBtn) openAuthModalBtn.style.display = 'none';
+      if (userProfile) userProfile.style.display = 'flex';
+      if (userEmailDisplay) userEmailDisplay.textContent = email || 'User';
+    } else {
+      if (openAuthModalBtn) openAuthModalBtn.style.display = 'block';
+      if (userProfile) userProfile.style.display = 'none';
+    }
+  }
+
+  // Open Modal function
+  function showAuthModal(mode = 'login') {
+    authMode = mode;
+    if (authError) authError.style.display = 'none';
+    if (authSuccess) authSuccess.style.display = 'none';
+
+    if (mode === 'signup') {
+      if (tabSignup) tabSignup.classList.add('active');
+      if (tabLogin) tabLogin.classList.remove('active');
+      if (authSubmitText) authSubmitText.textContent = 'Create Account';
+    } else {
+      if (tabLogin) tabLogin.classList.add('active');
+      if (tabSignup) tabSignup.classList.remove('active');
+      if (authSubmitText) authSubmitText.textContent = 'Log In';
+    }
+
+    if (authModal) authModal.style.display = 'flex';
+  }
+
+  // Close Modal function
+  function hideAuthModal() {
+    if (authModal) authModal.style.display = 'none';
+    if (authError) authError.style.display = 'none';
+    if (authSuccess) authSuccess.style.display = 'none';
+  }
+
+  // Modal Triggers
+  if (openAuthModalBtn) {
+    openAuthModalBtn.addEventListener('click', () => showAuthModal('login'));
+  }
+  if (closeModalBtn) {
+    closeModalBtn.addEventListener('click', hideAuthModal);
+  }
+  if (authModal) {
+    authModal.addEventListener('click', (e) => {
+      if (e.target === authModal) hideAuthModal();
+    });
+  }
+
+  // Tab switching
+  if (tabLogin) {
+    tabLogin.addEventListener('click', () => showAuthModal('login'));
+  }
+  if (tabSignup) {
+    tabSignup.addEventListener('click', () => showAuthModal('signup'));
+  }
+
+  // Logout Trigger
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+      clearAuthSession();
+      updateAuthUI();
+      showStatus('You have been logged out.', 'info');
+    });
+  }
+
+  // =========================================================================
+  // Auth Form Submission (Login / Signup Flow)
+  // =========================================================================
+  if (authForm) {
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = authEmail.value.trim();
+      const password = authPassword.value;
+
+      if (!email || !password) {
+        if (authError) {
+          authError.textContent = 'Please enter both email and password.';
+          authError.style.display = 'block';
+        }
+        return;
+      }
+
+      if (authError) authError.style.display = 'none';
+      if (authSuccess) authSuccess.style.display = 'none';
+      if (authSubmitText) authSubmitText.textContent = 'Processing...';
+
+      const endpoint = authMode === 'signup' ? '/api/auth/signup' : '/api/auth/login';
+
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Authentication failed');
+        }
+
+        const token = data.token || (data.session && data.session.access_token);
+
+        if (token) {
+          setAuthSession(token, email);
+          updateAuthUI();
+          hideAuthModal();
+          showStatus(authMode === 'signup' ? 'Account created and logged in!' : 'Logged in successfully!', 'success');
+        } else if (authMode === 'signup') {
+          // In Supabase, if email confirmation is enabled, a session may not be returned immediately
+          if (authSuccess) {
+            authSuccess.textContent = 'Registration successful! Please check your email to confirm your account or log in.';
+            authSuccess.style.display = 'block';
+          }
+        }
+      } catch (err) {
+        console.error('Auth error:', err);
+        if (authError) {
+          authError.textContent = err.message || 'Authentication error';
+          authError.style.display = 'block';
+        }
+      } finally {
+        if (authSubmitText) {
+          authSubmitText.textContent = authMode === 'signup' ? 'Create Account' : 'Log In';
+        }
+      }
+    });
+  }
+
   // Photo Selection & Preview Handling
   if (photoInput) {
     photoInput.addEventListener('change', () => {
@@ -194,7 +433,7 @@ function setupApp() {
 
         if (geoStatusBar && geoStatusText) {
           geoStatusBar.className = 'geo-status-bar active';
-          geoStatusText.textContent = '📍 Photo selected • Click Upload Sighting to capture GPS';
+          geoStatusText.textContent = '📍 Photo selected • Ready to upload';
         }
       }
     });
@@ -204,27 +443,29 @@ function setupApp() {
   if (removePhotoBtn) {
     removePhotoBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (photoInput) photoInput.value = '';
-      if (imagePreview) imagePreview.src = '';
-      if (previewContainer) previewContainer.style.display = 'none';
-      if (uploadPrompt) uploadPrompt.style.display = 'flex';
-      if (geoStatusBar) geoStatusBar.className = 'geo-status-bar';
-      if (geoStatusText) geoStatusText.textContent = 'GPS coordinates will be captured automatically';
+      resetUploadForm();
     });
   }
 
   // =========================================================================
-  // 1. Ensure the "Upload Sighting" button has a click event listener attached to the correct HTML ID
+  // Upload Sighting Button Event Listener
   // =========================================================================
   if (uploadBtn) {
     uploadBtn.addEventListener('click', () => {
-      // 2. Check if navigator.geolocation exists. If not, alert the user that their browser doesn't support geolocation.
+      // 1. Check if user is authenticated
+      const token = getAuthToken();
+      if (!token) {
+        showAuthModal('login');
+        alert('Please log in or sign up before uploading a sighting.');
+        return;
+      }
+
+      // 2. Check if navigator.geolocation exists
       if (!navigator.geolocation) {
         alert("Geolocation is not supported by your browser.");
         return;
       }
 
-      // 5. Provide visual feedback during the upload process (changing button text to 'Uploading...')
       uploadBtn.textContent = 'Uploading...';
       uploadBtn.disabled = true;
 
@@ -233,7 +474,7 @@ function setupApp() {
         geoStatusText.textContent = 'Acquiring GPS location...';
       }
 
-      // 3. Call navigator.geolocation.getCurrentPosition() with an explicit error callback function
+      // 3. Call navigator.geolocation.getCurrentPosition() with explicit error callback
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const latitude = position.coords.latitude;
@@ -247,7 +488,6 @@ function setupApp() {
           const file = photoInput && photoInput.files && photoInput.files[0];
           if (!file) {
             alert("Please select or capture a photo first.");
-            // 5. Reset button text if validation fails
             uploadBtn.textContent = 'Upload Sighting';
             uploadBtn.disabled = false;
             return;
@@ -259,10 +499,21 @@ function setupApp() {
           formData.append('latitude', latitude);
           formData.append('longitude', longitude);
 
-          // 4. Use a try...catch block around the fetch() call to catch network errors and log them
+          const petSelect = document.getElementById('petSelect');
+          if (petSelect && petSelect.value) {
+            formData.append('pet_id', petSelect.value);
+          }
+
+          // 4. Attach token to Authorization header and send POST to /api/upload
           try {
+            const headers = {};
+            if (token) {
+              headers['Authorization'] = `Bearer ${token}`;
+            }
+
             const response = await fetch('/api/upload', {
               method: 'POST',
+              headers: headers,
               body: formData
             });
 
@@ -273,14 +524,7 @@ function setupApp() {
 
             const savedRecord = await response.json();
 
-            // Clear upload form
-            if (photoInput) photoInput.value = '';
-            if (imagePreview) imagePreview.src = '';
-            if (previewContainer) previewContainer.style.display = 'none';
-            if (uploadPrompt) uploadPrompt.style.display = 'flex';
-            if (geoStatusBar) geoStatusBar.className = 'geo-status-bar';
-            if (geoStatusText) geoStatusText.textContent = 'GPS coordinates will be captured automatically';
-
+            resetUploadForm();
             alert('Sighting uploaded successfully!');
 
             // Refresh map and feed
@@ -293,13 +537,11 @@ function setupApp() {
             console.error("Upload network error:", networkError);
             alert("Upload failed: " + networkError.message);
           } finally {
-            // 5. Reset button text after upload completes or fails
             uploadBtn.textContent = 'Upload Sighting';
             uploadBtn.disabled = false;
           }
         },
         (err) => {
-          // 3. Explicit error callback function to log permission denials or timeouts
           console.error("Location access error:", err);
 
           let errorMsg = "Unable to retrieve location.";
@@ -318,7 +560,6 @@ function setupApp() {
 
           alert("Location access error: " + errorMsg);
 
-          // 5. Reset button text after failure
           uploadBtn.textContent = 'Upload Sighting';
           uploadBtn.disabled = false;
         },
@@ -369,8 +610,16 @@ function setupApp() {
     });
   }
 
-  // Initial fetch on page load
+  // Check auth state on page load
+  updateAuthUI();
+  if (!getAuthToken()) {
+    // Show modal if user is not authenticated as requested in requirement 5
+    showAuthModal('login');
+  }
+
+  // Load initial sightings and pets
   fetchSightings();
+  fetchPets();
 }
 
 // Execute setupApp
