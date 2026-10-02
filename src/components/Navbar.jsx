@@ -46,7 +46,7 @@ export default function Navbar({ onOpenBooking }) {
         </a>
 
         {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center gap-1.5 lg:gap-2">
+        <nav className="hidden lg:flex items-center gap-1.5 lg:gap-2">
           {navLinks.map((link) => (
             <a
               key={link.name}
@@ -58,30 +58,30 @@ export default function Navbar({ onOpenBooking }) {
           ))}
         </nav>
 
-        {/* Desktop Action Buttons */}
-        <div className="hidden md:flex items-center gap-3">
+        {/* Action Buttons (Visible on tablet and desktop) */}
+        <div className="hidden sm:flex items-center gap-3">
           <button
             onClick={onOpenBooking}
-            className="flex items-center gap-2 bg-[#201E1D] hover:bg-[#FF6B4A] text-white font-semibold text-sm px-5 py-2.5 rounded-full transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+            className="flex items-center gap-2 bg-[#201E1D] hover:bg-[#FF6B4A] text-white font-semibold text-xs sm:text-sm px-4 sm:px-5 py-2.5 rounded-full transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
           >
             <span>Get Started</span>
             <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
           </button>
         </div>
 
-        {/* Mobile Hamburger Toggle */}
+        {/* Tablet & Mobile Hamburger Toggle */}
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="md:hidden w-10 h-10 rounded-full bg-[#F5EFE6] flex items-center justify-center text-[#201E1D] hover:text-[#FF6B4A] transition-colors"
+          className="lg:hidden w-10 h-10 rounded-full bg-[#F5EFE6] flex items-center justify-center text-[#201E1D] hover:text-[#FF6B4A] transition-colors"
           aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
         >
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
-      {/* Mobile Drawer Menu */}
+      {/* Mobile & Tablet Drawer Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden max-w-7xl mx-auto mt-2 p-5 bg-white/95 backdrop-blur-xl rounded-3xl border border-[#E8E2D9] shadow-xl animate-in fade-in slide-in-from-top-4 duration-200">
+        <div className="lg:hidden max-w-7xl mx-auto mt-2 p-5 bg-white/95 backdrop-blur-xl rounded-3xl border border-[#E8E2D9] shadow-xl animate-in fade-in slide-in-from-top-4 duration-200">
           <nav className="flex flex-col gap-2">
             {navLinks.map((link) => (
               <a
