@@ -1,5 +1,5 @@
 import React from 'react';
-import { PawPrint, MapPin, Phone, Mail, Clock, Heart } from 'lucide-react';
+import { Compass, MapPin, Phone, Mail, Clock, Heart } from 'lucide-react';
 
 export default function Footer() {
   return (
@@ -12,15 +12,15 @@ export default function Footer() {
           {/* Brand Column */}
           <div className="lg:col-span-4 space-y-4">
             <a href="#" className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-full bg-[#FF6B4A] flex items-center justify-center text-white">
-                <PawPrint className="w-5 h-5 fill-current" />
+              <div className="w-10 h-10 rounded-full bg-[#FF6B4A] flex items-center justify-center text-white shadow-xs">
+                <Compass className="w-5 h-5" />
               </div>
               <span className="font-extrabold text-2xl tracking-tight text-[#201E1D] font-['Outfit']">
-                Animal<span className="text-[#FF6B4A]">Huzz</span>
+                Wild<span className="text-[#FF6B4A]">Lens</span>
               </span>
             </a>
             <p className="text-sm text-[#736B62] leading-relaxed max-w-sm">
-              An open, student-driven wildlife observation and mapping platform for university campuses. Built with React, PostGIS, Leaflet, and Google Gemini AI.
+              An open, student-driven wildlife observation and mapping platform for university campuses. Built with React, Supabase, PostGIS, Leaflet, and Google Gemini AI.
             </p>
             <div className="flex items-center gap-3 pt-2">
               <a 
@@ -86,7 +86,7 @@ export default function Footer() {
 
         {/* Bottom Copyright */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-[#8C8479] gap-4">
-          <p>© {new Date().getFullYear()} AnimalHuzz Campus Wildlife Tracker. Built with care for university animals.</p>
+          <p>© {new Date().getFullYear()} WildLens Campus Wildlife Platform. Built with care for university biodiversity.</p>
           <div className="flex items-center gap-6">
             <span className="flex items-center gap-1 text-[#FF6B4A] font-semibold">
               <Heart className="w-3.5 h-3.5 fill-current" />
