@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Mail, Lock, Sparkles, LogIn, UserPlus, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Mail, Lock, Sparkles, LogIn, UserPlus, AlertCircle, CheckCircle, ShieldCheck } from 'lucide-react';
+import { supabase } from '../utils/supabase';
 
 export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   const [mode, setMode] = useState('login'); // 'login' or 'signup'
@@ -11,10 +12,16 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // Login handler with strict @universalai.in validation
+  const handleLogin = async (e) => {
+    if (e) e.preventDefault();
     if (!email.trim() || !password) {
       setError('Please provide both email and password.');
+      return;
+    }
+
+    if (!email.toLowerCase().endsWith('@universalai.in')) {
+      setError('Access restricted. Please use your @universalai.in university email.');
       return;
     }
 
@@ -22,24 +29,17 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
     setError('');
     setSuccessMsg('');
 
-    const endpoint = mode === 'signup' 
-      ? 'http://localhost:3001/api/auth/signup' 
-      : 'http://localhost:3001/api/auth/login';
-
     try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password })
+      const { data, error: sbError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || `${mode === 'signup' ? 'Signup' : 'Login'} failed`);
+      if (sbError) {
+        throw sbError;
       }
 
-      const token = data.token || (data.session && data.session.access_token);
+      const token = data.session?.access_token;
 
       if (token) {
         localStorage.setItem('animalhuzz_token', token);
@@ -48,18 +48,60 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
           onAuthSuccess({ token, email: email.trim() });
         }
         onClose();
-      } else if (mode === 'signup') {
-        setSuccessMsg('Account created successfully! You can now log in.');
+      } else {
+        throw new Error('Could not establish an active session. Please verify your credentials.');
+      }
+    } catch (err) {
+      console.error('Supabase login error:', err);
+      setError(err.message || 'Authentication error. Please verify your credentials.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Sign up handler with strict @universalai.in validation
+  const handleSignUp = async (e) => {
+    if (e) e.preventDefault();
+    if (!email.trim() || !password) {
+      setError('Please provide both email and password.');
+      return;
+    }
+
+    if (!email.toLowerCase().endsWith('@universalai.in')) {
+      setError('Access restricted. Please use your @universalai.in university email.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+    setSuccessMsg('');
+
+    try {
+      const { data, error: sbError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password: password
+      });
+
+      if (sbError) {
+        throw sbError;
+      }
+
+      const token = data.session?.access_token;
+
+      if (token) {
+        localStorage.setItem('animalhuzz_token', token);
+        localStorage.setItem('user_email', email.trim());
+        if (onAuthSuccess) {
+          onAuthSuccess({ token, email: email.trim() });
+        }
+        onClose();
+      } else {
+        setSuccessMsg('Account registered! Please check your university email to confirm registration, then log in.');
         setMode('login');
       }
     } catch (err) {
-      console.error('Auth error:', err);
-      // Helpful fallback note if backend DB is not reachable
-      if (err.message && err.message.includes('Failed to fetch')) {
-        setError('Cannot connect to backend server at http://localhost:3001. Please make sure the server is running.');
-      } else {
-        setError(err.message || 'Authentication failed. Please check your credentials.');
-      }
+      console.error('Supabase signup error:', err);
+      setError(err.message || 'Failed to create scout account. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -91,8 +133,8 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
           </h3>
           <p className="text-xs sm:text-sm text-[#6B635A]">
             {mode === 'signup' 
-              ? 'Join fellow students in spotting and protecting campus animals.'
-              : 'Sign in to log sightings, claim campus badges, and earn rank.'}
+              ? 'Join university students in spotting, tagging, and caring for campus fauna.'
+              : 'Sign in to record sightings, earn badges, and climb the scout leaderboard.'}
           </p>
         </div>
 
@@ -124,31 +166,36 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
 
         {/* Status Messages */}
         {error && (
-          <div className="mb-4 p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2.5">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{error}</span>
+          <div className="mb-4 p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2.5 animate-in fade-in duration-150">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+            <span className="font-semibold leading-relaxed">{error}</span>
           </div>
         )}
         {successMsg && (
-          <div className="mb-4 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-start gap-2.5">
-            <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{successMsg}</span>
+          <div className="mb-4 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-start gap-2.5 animate-in fade-in duration-150">
+            <CheckCircle className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+            <span className="font-semibold leading-relaxed">{successMsg}</span>
           </div>
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={mode === 'signup' ? handleSignUp : handleLogin} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-[#4A443D] uppercase tracking-wider mb-1.5">
-              University Email
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-[#4A443D] uppercase tracking-wider">
+                University Email
+              </label>
+              <span className="text-[10px] font-bold text-[#FF6B4A] bg-[#FFF0EB] px-2 py-0.5 rounded-full">
+                @universalai.in Only
+              </span>
+            </div>
             <div className="relative">
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="student@university.edu"
+                placeholder="name@universalai.in"
                 className="w-full bg-[#FAF7F2] border border-[#E5DCD0] rounded-2xl pl-10 pr-4 py-3 text-sm font-medium text-[#201E1D] focus:outline-none focus:border-[#FF6B4A] focus:bg-white transition-colors"
               />
               <Mail className="w-4 h-4 text-[#8C8479] absolute left-3.5 top-3.5" />
@@ -180,7 +227,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
             {isLoading ? (
               <span className="flex items-center gap-2">
                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Processing...</span>
+                <span>Validating with Supabase...</span>
               </span>
             ) : mode === 'signup' ? (
               <>
@@ -196,10 +243,11 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
           </button>
         </form>
 
-        {/* Demo Fast Login / Guest Note */}
-        <div className="mt-5 pt-4 border-t border-[#F0EBE1] text-center">
-          <p className="text-xs text-[#8C8479]">
-            Campus wildlife tracking made for students & researchers.
+        {/* Security & Domain restriction note */}
+        <div className="mt-5 pt-4 border-t border-[#F0EBE1] text-center space-y-1">
+          <p className="text-[11px] text-[#8C8479] flex items-center justify-center gap-1 font-medium">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Authorized access for Universal AI University students & staff</span>
           </p>
         </div>
       </div>
