@@ -96,13 +96,17 @@ export default function SightingFeed({ sightings, onSelectSighting, onTriggerUpl
                   className="bg-white rounded-[2.5rem] p-5 sm:p-6 border border-[#EBE4D8] shadow-xs hover:shadow-[0_20px_40px_rgba(45,42,38,0.08)] hover:border-[#FFD4C9] transition-all duration-300 flex flex-col justify-between group"
                 >
                   <div>
-                    {/* Sighting Photo */}
+                    {/* Sighting Photo: Render image for ALL cards regardless of pet_id */}
                     <div className="relative rounded-[2rem] overflow-hidden aspect-[4/3] mb-5 bg-[#FAF7F2]">
                       <img
                         src={formatImageUrl(item.image_url || item.image)}
                         alt={`Campus sighting of ${displayTitle} #${item.id}`}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=600&q=80';
+                        }}
                       />
                       
                       {/* Species Badge */}

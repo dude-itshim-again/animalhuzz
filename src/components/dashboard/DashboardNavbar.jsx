@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Compass, Menu, X, LogOut, MapPin, Trophy, Camera, Sparkles, BookOpen } from 'lucide-react';
+import { Compass, Menu, X, LogOut, MapPin, Trophy, Camera, Sparkles, BookOpen, ShieldCheck } from 'lucide-react';
 
-export default function DashboardNavbar({ user, onLogout, onTriggerUpload }) {
+export default function DashboardNavbar({ user, onLogout, onTriggerUpload, onNavigate }) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -88,6 +88,18 @@ export default function DashboardNavbar({ user, onLogout, onTriggerUpload }) {
                 {user?.email}
               </div>
             </div>
+            {/* Secret Admin Link */}
+            <a
+              href="/dashboard/admin/register-pet"
+              onClick={(e) => {
+                e.preventDefault();
+                if (onNavigate) onNavigate('/dashboard/admin/register-pet');
+              }}
+              className="w-8 h-8 rounded-full bg-white hover:bg-[#FFF0EB] text-[#736B62] hover:text-[#FF6B4A] flex items-center justify-center transition-colors cursor-pointer border border-[#E8E2D9] ml-1"
+              title="Admin Console: Register Campus Pet"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+            </a>
             <button
               onClick={onLogout}
               className="w-8 h-8 rounded-full bg-white hover:bg-red-50 text-[#736B62] hover:text-red-600 flex items-center justify-center transition-colors cursor-pointer border border-[#E8E2D9] ml-1"
@@ -148,6 +160,18 @@ export default function DashboardNavbar({ user, onLogout, onTriggerUpload }) {
                 <Camera className="w-4 h-4" />
                 <span>Upload a Sighting</span>
               </button>
+              <a
+                href="/dashboard/admin/register-pet"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setMobileMenuOpen(false);
+                  if (onNavigate) onNavigate('/dashboard/admin/register-pet');
+                }}
+                className="w-full bg-[#FAF5EE] hover:bg-[#FFF0EB] text-[#59534B] hover:text-[#FF6B4A] font-bold text-xs py-3 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-2 border border-[#EFE8DF]"
+              >
+                <ShieldCheck className="w-4 h-4 text-[#FF6B4A]" />
+                <span>Admin: Register Pet Face</span>
+              </a>
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);

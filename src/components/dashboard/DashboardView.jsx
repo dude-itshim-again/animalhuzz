@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DashboardNavbar from './DashboardNavbar';
 import DashboardWelcome from './DashboardWelcome';
 import Hero from '../Hero';
@@ -7,22 +7,42 @@ import SightingFeed from '../SightingFeed';
 import CampusPokedex from '../CampusPokedex';
 import Leaderboard from '../Leaderboard';
 import Footer from '../Footer';
+import UploadModal, { SightingSuccessToast } from './UploadModal';
 
 export default function DashboardView({ 
   user, 
   onLogout, 
   sightings, 
   isLoadingSightings, 
-  onRefreshSightings 
+  onRefreshSightings,
+  onNavigate
 }) {
   const [activeMarkerId, setActiveMarkerId] = useState(null);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [toastData, setToastData] = useState(null);
+
+  // Auto-dismiss success toast after 6 seconds
+  useEffect(() => {
+    if (toastData) {
+      const timer = setTimeout(() => {
+        setToastData(null);
+      }, 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastData]);
 
   const handleTriggerUpload = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    const uploadBtn = document.querySelector('#home button');
-    if (uploadBtn) {
-      setTimeout(() => uploadBtn.click(), 400);
+    setUploadModalOpen(true);
+  };
+
+  const handleUploadSuccess = (newSighting) => {
+    if (onRefreshSightings) {
+      onRefreshSightings();
     }
+  };
+
+  const handleShowToast = (data) => {
+    setToastData(data);
   };
 
   return (
@@ -32,6 +52,7 @@ export default function DashboardView({
         user={user} 
         onLogout={onLogout} 
         onTriggerUpload={handleTriggerUpload} 
+        onNavigate={onNavigate}
       />
 
       <main className="flex-1">
@@ -45,6 +66,7 @@ export default function DashboardView({
         <Hero 
           user={user}
           onUploadSuccess={onRefreshSightings}
+          onTriggerUploadModal={handleTriggerUpload}
         />
 
         {/* 4. Live Campus Leaflet Map */}
@@ -73,6 +95,21 @@ export default function DashboardView({
 
       {/* Footer */}
       <Footer />
+
+      {/* 8. Dedicated Tailwind Upload Modal */}
+      <UploadModal
+        isOpen={uploadModalOpen}
+        onClose={() => setUploadModalOpen(false)}
+        user={user}
+        onUploadSuccess={handleUploadSuccess}
+        onShowToast={handleShowToast}
+      />
+
+      {/* 9. Styled Success Toast */}
+      <SightingSuccessToast 
+        toast={toastData} 
+        onClose={() => setToastData(null)} 
+      />
     </div>
   );
 }

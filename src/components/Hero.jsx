@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, MapPin, Sparkles, ShieldCheck, Heart, AlertCircle, CheckCircle, RefreshCw, X, ArrowUpRight } from 'lucide-react';
 
-export default function Hero({ user, onOpenAuth, onUploadSuccess }) {
+export default function Hero({ user, onOpenAuth, onUploadSuccess, onTriggerUploadModal }) {
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -33,10 +33,13 @@ export default function Hero({ user, onOpenAuth, onUploadSuccess }) {
 
   // Trigger file input click when "Upload a Sighting" is clicked
   const handleUploadClick = () => {
+    if (onTriggerUploadModal) {
+      onTriggerUploadModal();
+      return;
+    }
     const token = localStorage.getItem('animalhuzz_token');
     if (!token && !user) {
       if (onOpenAuth) onOpenAuth();
-      // Notice: user can still choose file after logging in
       return;
     }
     if (fileInputRef.current) {

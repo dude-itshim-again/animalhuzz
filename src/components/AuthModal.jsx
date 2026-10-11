@@ -236,6 +236,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
         const companionMatch = SCOUT_CHARACTERS.find(c => c.id === storedAvatarId) || SCOUT_CHARACTERS[0];
 
         const userObj = {
+          id: data.user?.id || null,
           token,
           email: email.trim(),
           scoutName: storedName,
@@ -244,6 +245,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
           companionName: metadata.companion_name || companionMatch.name
         };
 
+        if (data.user?.id) {
+          localStorage.setItem('user_id', data.user.id);
+        }
         localStorage.setItem('animalhuzz_token', token);
         localStorage.setItem('user_email', email.trim());
         localStorage.setItem('scout_name', storedName);
